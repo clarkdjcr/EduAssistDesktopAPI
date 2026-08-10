@@ -17,13 +17,27 @@ app.get("/test", (req, res) => {
   res.send("API is working");
 });
 
-app.get("/integration/health", (req, res) => {
+app.get("/integration/health", async (req, res) => {
+  // Reflects reality: the main app's registerSharePointWebhooks/
+  // renewSharePointWebhooks functions write one doc per active Graph webhook
+  // subscription to sharepointSubscriptions, keyed by expirationDateTime.
+  // Connected means at least one subscription hasn't expired yet.
+  let sharePointConnected = false;
+  try {
+    const activeSubs = await db.collection("sharepointSubscriptions")
+      .where("expirationDateTime", ">", new Date().toISOString())
+      .limit(1)
+      .get();
+    sharePointConnected = !activeSubs.empty;
+  } catch (err) {
+    console.error("integration/health: sharepointSubscriptions check failed", err.message);
+  }
+
   res.json({
     documentStorageMode: "Firebase",
-    sharePointConnected: false,
+    sharePointConnected,
     firebaseReady: true,
     webhooksHealthy: true,
-    notes: "Initial desktop API response",
   });
 });
 
