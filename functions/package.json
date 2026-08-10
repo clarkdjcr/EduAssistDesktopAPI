@@ -3,11 +3,18 @@
   "description": "Cloud Functions for Firebase",
   "scripts": {
     "lint": "eslint .",
+    "test": "jest --forceExit",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ]
   },
   "engines": {
     "node": "24"
@@ -22,7 +29,8 @@
   "devDependencies": {
     "eslint": "^8.15.0",
     "eslint-config-google": "^0.14.0",
-    "firebase-functions-test": "^3.4.1"
+    "firebase-functions-test": "^3.4.1",
+    "jest": "^30.4.2"
   },
   "private": true
 }

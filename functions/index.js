@@ -17,28 +17,29 @@ app.get("/test", (req, res) => {
   res.send("API is working");
 });
 
-app.get("/integration/health", async (req, res) => {
-  // firebaseReady: a real Firestore round-trip against the same healthPing/probe
-  // doc the main app's healthCheck function writes (NFR-002). A successful get()
-  // proves connectivity even if the doc hasn't been written yet.
+// firebaseReady: a real Firestore round-trip against the same healthPing/probe
+// doc the main app's healthCheck function writes (NFR-002). A successful get()
+// proves connectivity even if the doc hasn't been written yet.
+//
+// sharePointConnected / webhooksHealthy: registerSharePointWebhooks and
+// renewSharePointWebhooks (main app) write one doc per active Graph webhook
+// subscription to sharepointSubscriptions, keyed by expirationDateTime.
+// Connected means at least one subscription hasn't expired; healthy means
+// none have expired without the daily renewal cron catching them.
+async function checkIntegrationHealth(firestoreDb) {
   let firebaseReady = false;
   try {
-    await db.collection("healthPing").doc("probe").get();
+    await firestoreDb.collection("healthPing").doc("probe").get();
     firebaseReady = true;
   } catch (err) {
     console.error("integration/health: Firestore connectivity check failed", err.message);
   }
 
-  // sharePointConnected / webhooksHealthy: registerSharePointWebhooks and
-  // renewSharePointWebhooks (main app) write one doc per active Graph webhook
-  // subscription to sharepointSubscriptions, keyed by expirationDateTime.
-  // Connected means at least one subscription hasn't expired; healthy means
-  // none have expired without the daily renewal cron catching them.
   let sharePointConnected = false;
   let webhooksHealthy = true;
   try {
     const nowIso = new Date().toISOString();
-    const subsSnap = await db.collection("sharepointSubscriptions").get();
+    const subsSnap = await firestoreDb.collection("sharepointSubscriptions").get();
     sharePointConnected = subsSnap.docs.some((doc) => doc.data().expirationDateTime > nowIso);
     webhooksHealthy = !subsSnap.docs.some((doc) => doc.data().expirationDateTime <= nowIso);
   } catch (err) {
@@ -46,12 +47,16 @@ app.get("/integration/health", async (req, res) => {
     webhooksHealthy = false;
   }
 
-  res.json({
+  return {
     documentStorageMode: "Firebase",
     sharePointConnected,
     firebaseReady,
     webhooksHealthy,
-  });
+  };
+}
+
+app.get("/integration/health", async (req, res) => {
+  res.json(await checkIntegrationHealth(db));
 });
 
 // Every route below requires a valid Firebase ID token. There is no
@@ -436,3 +441,5 @@ app.post("/companion/messages", async (req, res) => {
 });
 
 exports.desktopApi = onRequest(app);
+
+exports._test = { checkIntegrationHealth };
