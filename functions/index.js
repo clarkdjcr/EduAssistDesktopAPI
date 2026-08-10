@@ -18,26 +18,39 @@ app.get("/test", (req, res) => {
 });
 
 app.get("/integration/health", async (req, res) => {
-  // Reflects reality: the main app's registerSharePointWebhooks/
-  // renewSharePointWebhooks functions write one doc per active Graph webhook
-  // subscription to sharepointSubscriptions, keyed by expirationDateTime.
-  // Connected means at least one subscription hasn't expired yet.
-  let sharePointConnected = false;
+  // firebaseReady: a real Firestore round-trip against the same healthPing/probe
+  // doc the main app's healthCheck function writes (NFR-002). A successful get()
+  // proves connectivity even if the doc hasn't been written yet.
+  let firebaseReady = false;
   try {
-    const activeSubs = await db.collection("sharepointSubscriptions")
-      .where("expirationDateTime", ">", new Date().toISOString())
-      .limit(1)
-      .get();
-    sharePointConnected = !activeSubs.empty;
+    await db.collection("healthPing").doc("probe").get();
+    firebaseReady = true;
+  } catch (err) {
+    console.error("integration/health: Firestore connectivity check failed", err.message);
+  }
+
+  // sharePointConnected / webhooksHealthy: registerSharePointWebhooks and
+  // renewSharePointWebhooks (main app) write one doc per active Graph webhook
+  // subscription to sharepointSubscriptions, keyed by expirationDateTime.
+  // Connected means at least one subscription hasn't expired; healthy means
+  // none have expired without the daily renewal cron catching them.
+  let sharePointConnected = false;
+  let webhooksHealthy = true;
+  try {
+    const nowIso = new Date().toISOString();
+    const subsSnap = await db.collection("sharepointSubscriptions").get();
+    sharePointConnected = subsSnap.docs.some((doc) => doc.data().expirationDateTime > nowIso);
+    webhooksHealthy = !subsSnap.docs.some((doc) => doc.data().expirationDateTime <= nowIso);
   } catch (err) {
     console.error("integration/health: sharepointSubscriptions check failed", err.message);
+    webhooksHealthy = false;
   }
 
   res.json({
     documentStorageMode: "Firebase",
     sharePointConnected,
-    firebaseReady: true,
-    webhooksHealthy: true,
+    firebaseReady,
+    webhooksHealthy,
   });
 });
 
